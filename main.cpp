@@ -4,6 +4,12 @@
 #include <chrono>
 #include <memory>
 
+#include "OrientalMotor.h"
+#include "ODOMETRY.h"
+#include "LSP.h"
+#include "Lidar2D.h"
+#include "STATUS.h"
+
 using std::chrono::milliseconds;
 using std::chrono::seconds;
 using std::this_thread::sleep_for;
@@ -12,44 +18,18 @@ using LockGuard = std::lock_guard<std::mutex>;
 std::mutex mtx; 
 bool running = true;
 
-struct STATUS {
-  double x, y, a;
-  double cmd_v, cmd_w;
-
-  STATUS() {
-    x = 0.0;
-    y = 0.0;
-    a = 0.0;
-    cmd_v = 0.0;
-    cmd_w = 0.0;
-  };
-};
-
-struct ODOMETRY {
-  double x, y, a;
-
-  ODOMETRY() {
-    x = 0.0;
-    y = 0.0;
-    a = 0.0;
-  };
-};
-
 void thread_motor(std::shared_ptr<STATUS> st, std::shared_ptr<ODOMETRY> odo) {
   // スレッド起動メッセージ
   {
     LockGuard lock(mtx);
     std::cout << "Motor thread started." << std::endl;
   }
-  // 何かしらの処理
-  for (int i = 0; i < 10000; ++i) {
-    LockGuard lock(mtx); 
-    st->x += 1.0;
-  }
-  // 待機
+  OrientalMotor om;
   while (running) {
-    sleep_for(milliseconds(500));
+    ODOMETRY odo = om.run();
+    sleep_for(milliseconds(10));
   }
+  om.shutdown();
 }
 
 void thread_lidar(std::shared_ptr<STATUS> st) {
@@ -58,15 +38,12 @@ void thread_lidar(std::shared_ptr<STATUS> st) {
     LockGuard lock(mtx);
     std::cout << "LiDAR thread started." << std::endl;
   }
-  // 何かしらの処理
-  for (int i = 0; i < 10000; ++i) {
-    LockGuard lock(mtx);
-    st->x += 1.0;
-  }
-  // 待機
+  Lidar2D l2d;
   while (running) {
+    std::vector<LSP> lsps = l2d.run();
     sleep_for(milliseconds(500));
   }
+  l2d.shutdown();
 }
 
 int main(int argc, char* argv[]) {
@@ -78,7 +55,11 @@ int main(int argc, char* argv[]) {
   std::thread th_motor(thread_motor, state, odo);
   std::thread th_lidar(thread_lidar, state);
 
-  sleep_for(seconds(1));    // 1秒待ってからスレッドを停止する
+  // 終了待機
+  while (true) {
+    sleep_for(seconds(1));  // ダミー処理
+    break;
+  }
   running = false;          // threadを停止
 
   // スレッドの終了待機
@@ -86,7 +67,8 @@ int main(int argc, char* argv[]) {
   th_lidar.join();
 
   // 終了処理
-  std::cout << "shared_data = " << state->x << std::endl;
+  std::cout << *state << std::endl;
+  std::cout << *odo << std::endl;
   std::cout << "Bye." << std::endl;
   return 0;
 }
