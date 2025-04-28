@@ -12,7 +12,6 @@
 #include "LSP.h"
 #include "Lidar2D.h"
 #include "STATUS.h"
-//#include "JOYSTICK.h"
 
 void sigcatch(int);
 
@@ -95,15 +94,14 @@ int main(int argc, char* argv[]) {
   // 終了待機
   SDL_Event e;
   while (running) {
-    sleep_for(milliseconds(100));  // ダミー処理
-    //running = false;        // threadを停止
     while (SDL_PollEvent(&e)) {
       if (use_keyboard.load()) {
         if (e.type == SDL_KEYDOWN) {
-          running.store(false);
+          running.store(false);    // thread実行フラグを停止側にセット
         }
       }
     }
+    sleep_for(milliseconds(100));  // 時間調整待ち時間
   }
 
   // スレッドの終了待機
