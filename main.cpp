@@ -22,6 +22,10 @@ std::thread th_lidar;
 
 SDL_Joystick* joystick;
 
+/**************************************************
+ * 並行スレッドの定義
+ ****************************************************/
+// Oriental Motor 
 void thread_motor(std::shared_ptr<STATUS> st, std::shared_ptr<ODOMETRY> odo) {
   // スレッド起動メッセージ
   {
@@ -40,6 +44,7 @@ void thread_motor(std::shared_ptr<STATUS> st, std::shared_ptr<ODOMETRY> odo) {
   }
 }
 
+// 2D-LiDAR
 void thread_lidar(std::shared_ptr<STATUS> st) {
   // スレッド起動メッセージ
   {
@@ -58,7 +63,13 @@ void thread_lidar(std::shared_ptr<STATUS> st) {
   }
 }
 
+/**************************************************
+ * MAIN
+ ****************************************************/
 int main(int argc, char* argv[]) {
+  /**************************************************
+   * 初期設定
+   ****************************************************/
   // Ctrl+c 対応
   if (SIG_ERR == signal(SIGINT, sigcatch)) {
     std::printf("failed to set signal handler\n");
@@ -91,7 +102,9 @@ int main(int argc, char* argv[]) {
   th_motor = std::thread(thread_motor, state, odo);
   th_lidar = std::thread(thread_lidar, state);
 
-  // 終了待機
+  /**************************************************
+   * main loop
+   ****************************************************/
   SDL_Event e;
   while (running) {
     while (SDL_PollEvent(&e)) {
@@ -104,6 +117,9 @@ int main(int argc, char* argv[]) {
     sleep_for(milliseconds(100));  // 時間調整待ち時間
   }
 
+  /**************************************************
+   * 終了処理
+   ****************************************************/
   // スレッドの終了待機
   if (th_motor.joinable()) {
     th_motor.join();
@@ -112,11 +128,12 @@ int main(int argc, char* argv[]) {
     th_lidar.join();
   }
 
-  // 終了処理
+  // 状態表示
   std::cout << *state << std::endl;
   std::cout << *odo << std::endl;
   std::cout << "[In main] Bye." << std::endl;
 
+  // joystickライブラリの終了
   SDL_DestroyWindow(window);
   SDL_JoystickClose(joystick);
   SDL_Quit();
@@ -124,6 +141,9 @@ int main(int argc, char* argv[]) {
   return 0;
 }
 
+/**************************************************
+ * Ctrl + c 対応
+ ****************************************************/
 void sigcatch(int sig) {
   std::cerr << "\033[31m" << "\nSignal " << sig << " received." << "\033[0m" << std::endl;
   running.store(false);
