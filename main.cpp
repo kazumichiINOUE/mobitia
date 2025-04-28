@@ -3,20 +3,25 @@
 #include <mutex>
 #include <chrono>
 #include <memory>
+#include <SDL.h>
+#include <signal.h>
 
+#include "common.h"
 #include "OrientalMotor.h"
 #include "ODOMETRY.h"
 #include "LSP.h"
 #include "Lidar2D.h"
 #include "STATUS.h"
+//#include "JOYSTICK.h"
 
-using std::chrono::milliseconds;
-using std::chrono::seconds;
-using std::this_thread::sleep_for;
-using LockGuard = std::lock_guard<std::mutex>;
+void sigcatch(int);
 
-std::mutex mtx; 
-bool running = true;
+std::atomic<bool> running(true);
+
+std::thread th_motor;
+std::thread th_lidar;
+
+SDL_Joystick* joystick;
 
 void thread_motor(std::shared_ptr<STATUS> st, std::shared_ptr<ODOMETRY> odo) {
   // スレッド起動メッセージ
@@ -24,12 +29,16 @@ void thread_motor(std::shared_ptr<STATUS> st, std::shared_ptr<ODOMETRY> odo) {
     LockGuard lock(mtx);
     std::cout << "Motor thread started." << std::endl;
   }
-  OrientalMotor om;
-  while (running) {
-    ODOMETRY odo = om.run();
-    sleep_for(milliseconds(10));
+  try {
+    OrientalMotor om;
+    while (running.load()) {
+      om.run(odo);
+      sleep_for(milliseconds(10));
+    }
+    om.shutdown();
+  } catch (const std::exception& e) {
+    std::cerr << "Error in motor thread: " << e.what() << std::endl;
   }
-  om.shutdown();
 }
 
 void thread_lidar(std::shared_ptr<STATUS> st) {
@@ -38,37 +47,86 @@ void thread_lidar(std::shared_ptr<STATUS> st) {
     LockGuard lock(mtx);
     std::cout << "LiDAR thread started." << std::endl;
   }
-  Lidar2D l2d;
-  while (running) {
-    std::vector<LSP> lsps = l2d.run();
-    sleep_for(milliseconds(500));
+  try {
+    Lidar2D l2d;
+    while (running.load()) {
+      std::vector<LSP> lsps = l2d.run();
+      sleep_for(milliseconds(500));
+    }
+    l2d.shutdown();
+  } catch (const std::exception& e) {
+    std::cerr << "Error in lidar thread: " << e.what() << std::endl;
   }
-  l2d.shutdown();
 }
 
 int main(int argc, char* argv[]) {
+  // Ctrl+c 対応
+  if (SIG_ERR == signal(SIGINT, sigcatch)) {
+    std::printf("failed to set signal handler\n");
+    exit(0);
+  }
+
+  // Joystick setup
+  std::atomic<bool> use_keyboard(false);
+  if (SDL_Init(SDL_INIT_JOYSTICK | SDL_INIT_EVENTS) < 0) {
+    std::cerr << "Failure SDL initialize. " << SDL_GetError() << std::endl;
+    exit(0);
+  }
+  SDL_Window* window = SDL_CreateWindow("Keyboard Control", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 640, 480, 0);
+  joystick = SDL_JoystickOpen(0);
+  if (!joystick) {
+    std::cerr << "Joystick not detected. Use keyboard." << std::endl;
+    use_keyboard.store(true);
+  } else {
+    std::cerr << "Joystick detected:" << SDL_JoystickName(joystick) << std::endl;
+    std::cerr << SDL_JoystickNumAxes(joystick) << " axis" << std::endl;
+    std::cerr << SDL_JoystickNumButtons(joystick) << " buttons" << std::endl << std::endl;
+    std::cerr << "Joypad ready completed" << std::endl;
+  }
+
   // 共有オブジェクト
   auto state = std::make_shared<STATUS>();
   auto odo = std::make_shared<ODOMETRY>();
 
   // スレッド起動
-  std::thread th_motor(thread_motor, state, odo);
-  std::thread th_lidar(thread_lidar, state);
+  th_motor = std::thread(thread_motor, state, odo);
+  th_lidar = std::thread(thread_lidar, state);
 
   // 終了待機
-  while (true) {
-    sleep_for(seconds(1));  // ダミー処理
-    break;
+  SDL_Event e;
+  while (running) {
+    sleep_for(milliseconds(100));  // ダミー処理
+    //running = false;        // threadを停止
+    while (SDL_PollEvent(&e)) {
+      if (use_keyboard.load()) {
+        if (e.type == SDL_KEYDOWN) {
+          running.store(false);
+        }
+      }
+    }
   }
-  running = false;          // threadを停止
 
   // スレッドの終了待機
-  th_motor.join();
-  th_lidar.join();
+  if (th_motor.joinable()) {
+    th_motor.join();
+  }
+  if (th_lidar.joinable()) {
+    th_lidar.join();
+  }
 
   // 終了処理
   std::cout << *state << std::endl;
   std::cout << *odo << std::endl;
-  std::cout << "Bye." << std::endl;
+  std::cout << "[In main] Bye." << std::endl;
+
+  SDL_DestroyWindow(window);
+  SDL_JoystickClose(joystick);
+  SDL_Quit();
+
   return 0;
+}
+
+void sigcatch(int sig) {
+  std::cerr << "\033[31m" << "\nSignal " << sig << " received." << "\033[0m" << std::endl;
+  running.store(false);
 }

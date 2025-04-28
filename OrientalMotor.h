@@ -1,3 +1,4 @@
+#include "common.h"
 #include "ODOMETRY.h"
 
 class OrientalMotor {
@@ -5,19 +6,18 @@ private:
   ;
 public:
   OrientalMotor();
-  ODOMETRY run();
+  void run(std::shared_ptr<ODOMETRY> &odo);
   void shutdown();
 };
 
 OrientalMotor::OrientalMotor() {
-  std::cout << "Setup oriental motors" << std::endl;
+  std::cout << "\033[32m" << "Setup Oriental Motors" << "\033[0m" << std::endl;
 }
 
-ODOMETRY OrientalMotor::run() {
-  ODOMETRY odo;
-  return odo;
+void OrientalMotor::run(std::shared_ptr<ODOMETRY> &odo) {
+  ;
 }
 
 void OrientalMotor::shutdown() {
-  std::cout << "Shutdown oriental motors" << std::endl;
+  std::cout << "\033[32m" << "Shutdown Oriental Motors" << "\033[0m" << std::endl;
 }
