@@ -4,6 +4,7 @@
 #include <chrono>
 #include <memory>
 #include <SDL.h>
+#include <SDL_image.h>
 #include <signal.h>
 
 #include "common.h"
@@ -76,13 +77,68 @@ int main(int argc, char* argv[]) {
     exit(0);
   }
 
-  // Joystick setup
-  std::atomic<bool> use_keyboard(false);
+  // window setup
+  if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+    std::cerr << "SDL_Init Error: " << SDL_GetError() << std::endl;
+    return 1;
+  }
+
+  if (IMG_Init(IMG_INIT_PNG) == 0) {
+    std::cerr << "IMG_Init Error: " << IMG_GetError() << std::endl;
+    SDL_Quit();
+    return 1;
+  }
+
+  const int WINDOW_WIDTH = 1280;
+  const int WINDOW_HEIGHT = 960;
   if (SDL_Init(SDL_INIT_JOYSTICK | SDL_INIT_EVENTS) < 0) {
     std::cerr << "Failure SDL initialize. " << SDL_GetError() << std::endl;
-    exit(0);
+    return 1;
   }
-  SDL_Window* window = SDL_CreateWindow("Keyboard Control", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 640, 480, 0);
+  SDL_Window* window = SDL_CreateWindow("Keyboard Control", 
+                                        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 
+                                        WINDOW_WIDTH, WINDOW_HEIGHT, 
+                                        SDL_WINDOW_SHOWN);
+  if (!window) {
+    std::cerr << "SDL_CreateWindow Error: " << SDL_GetError() << std::endl;
+    IMG_Quit();
+    SDL_Quit();
+    return 1;
+  }
+
+  SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+  if (!renderer) {
+    std::cerr << "SDL_CreateRenderer Error: " << SDL_GetError() << std::endl;
+    SDL_DestroyWindow(window);
+    IMG_Quit();
+    SDL_Quit();
+    return 1;
+  }
+
+  // 画像を読み込む
+  SDL_Surface* backgroundSurface = IMG_Load("occMap.png");
+  if (!backgroundSurface) {
+    std::cerr << "IMG_Load Error: " << IMG_GetError() << std::endl;
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    IMG_Quit();
+    SDL_Quit();
+    return 1;
+  }
+
+  SDL_Texture* backgroundTexture = SDL_CreateTextureFromSurface(renderer, backgroundSurface);
+  SDL_FreeSurface(backgroundSurface);
+  if (!backgroundTexture) {
+    std::cerr << "SDL_CreateTextureFromSurface Error: " << SDL_GetError() << std::endl;
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    IMG_Quit();
+    SDL_Quit();
+    return 1;
+  }
+
+  // Joystick setup
+  std::atomic<bool> use_keyboard(false);
   joystick = SDL_JoystickOpen(0);
   if (!joystick) {
     std::cerr << "Joystick not detected. Use keyboard." << std::endl;
@@ -105,15 +161,24 @@ int main(int argc, char* argv[]) {
   /**************************************************
    * main loop
    ****************************************************/
-  SDL_Event e;
+  SDL_Event event;
   while (running) {
-    while (SDL_PollEvent(&e)) {
+    while (SDL_PollEvent(&event)) {
       if (use_keyboard.load()) {
-        if (e.type == SDL_KEYDOWN) {
+        if (event.type == SDL_KEYDOWN) {
           running.store(false);    // thread実行フラグを停止側にセット
         }
       }
     }
+    // 描画処理
+    SDL_RenderClear(renderer);
+    SDL_RenderCopy(renderer, backgroundTexture, nullptr, nullptr);
+
+    // 何かの描画処理
+
+    SDL_RenderPresent(renderer);
+
+    //SDL_Delay(10); // 60FPSくらいにする
     sleep_for(milliseconds(100));  // 時間調整待ち時間
   }
 

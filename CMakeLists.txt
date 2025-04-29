@@ -16,4 +16,5 @@ link_directories(${SDL2_LIBRARY_DIRS})
 #### 実行ファイルの作成
 set(EXECUTABLE_OUTPUT_PATH ${BIN_DIR})   # 実行ファイルの保存場所
 add_executable (main main.cpp common.cpp)
-target_link_libraries(main ${SDL2_LIBRARIES})
+target_link_libraries(main ${SDL2_LIBRARIES} SDL2_image)
+
